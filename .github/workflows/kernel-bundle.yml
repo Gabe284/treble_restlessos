@@ -59,6 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/validate-device-profile.py devices/motorola/kansas/device.json
+          python3 scripts/validate-kernel-integration.py devices/motorola/kansas/kernel-integration.json
           test -n "${GH_PAT:-}" || {
             echo "::error::Configure GH_PAT with permission to dispatch workflows and read Actions artifacts in Gabe284/GKI_KernelSU_SUSFS."
             exit 1

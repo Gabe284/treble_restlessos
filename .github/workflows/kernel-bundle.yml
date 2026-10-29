@@ -131,7 +131,9 @@ jobs:
             echo "::error::Could not find the dispatched kernel workflow run."
             exit 1
           fi
+          RUN_SHA="$(gh run view "$RUN_ID" --repo "$KERNEL_REPO" --json headSha --jq .headSha)"
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "run_sha=$RUN_SHA" >> "$GITHUB_OUTPUT"
           echo "run_url=https://github.com/$KERNEL_REPO/actions/runs/$RUN_ID" >> "$GITHUB_OUTPUT"
           gh run watch "$RUN_ID" --repo "$KERNEL_REPO" --exit-status
 
@@ -156,12 +158,13 @@ jobs:
           KERNEL_TRACK: ${{ steps.dispatch.outputs.kernel_track }}
           KERNEL_WORKFLOW: ${{ steps.dispatch.outputs.workflow }}
           KERNEL_RUN_ID: ${{ steps.remote.outputs.run_id }}
+          KERNEL_RUN_SHA: ${{ steps.remote.outputs.run_sha }}
           KERNEL_RUN_URL: ${{ steps.remote.outputs.run_url }}
           KERNEL_STARTED_AT: ${{ steps.dispatch.outputs.started_at }}
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -euo pipefail
-          SOURCE_SHA="$(gh api "repos/$KERNEL_REPO/commits/$KERNEL_REF" --jq .sha)"
+          SOURCE_SHA="$KERNEL_RUN_SHA"
           export SOURCE_SHA
           python3 - <<'PY'
           import json, os

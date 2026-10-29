@@ -23,10 +23,32 @@
     "vendor_incremental": "62f8a3",
     "kernel_release": "5.15.208-android13-Wild",
     "active_slot_suffix": "_a",
-    "hardware": "mt6835"
+    "active_slot_index": 0,
+    "hardware": "mt6835",
+    "verified_boot_state": "green",
+    "vbmeta_device_state": "locked",
+    "flash_locked": true,
+    "avb_version": "1.3"
   },
   "partition_layout_observed": {
     "super": "/dev/block/by-name/super",
+    "physical_partition_sizes_bytes": {
+      "boot_a": 67108864,
+      "boot_b": 67108864,
+      "init_boot_a": 8388608,
+      "vendor_boot_a": 67108864,
+      "vendor_boot_b": 67108864,
+      "vbmeta_a": 8388608,
+      "vbmeta_system_a": 8388608,
+      "super": 8355053568
+    },
+    "logical_partition_sizes_bytes": {
+      "system_a": 3156676608,
+      "vendor_a": 553607168,
+      "product_a": 3823730688,
+      "system_ext_a": 639528960,
+      "vendor_dlkm_a": 13795328
+    },
     "logical_partitions_seen": [
       "system_a",
       "system_ext_a",
@@ -64,7 +86,11 @@
       "tzapp_b",
       "vcp_a",
       "vcp_b"
-    ]
+    ],
+    "slot_metadata": {
+      "bootctl_get_current_slot": 0,
+      "bootctl_get_active_boot_slot": 0
+    }
   },
   "runtime_observations": {
     "vendor_filesystem": "erofs",
@@ -89,15 +115,20 @@
     "preserve_existing_device_patches": true
   },
   "verification": {
-    "source": "User-provided read-only Termux getprop, uname, mount, and /dev/block/by-name output",
+    "source": "User-provided read-only Termux getprop, uname, mount, blockdev, bootctl, and /dev/block/by-name output",
     "captured_date": "2026-10-29",
     "unverified": [
-      "exact partition sizes and image hashes",
-      "bootloader unlock and AVB state",
+      "hashes and contents of boot and firmware images",
       "inactive-slot completeness and bootability",
       "exact origin of runtime overlay/bind mounts",
       "official Motorola firmware package and matching release",
-      "whether all observed partition names are writable on this build"
+      "whether all observed partition names are writable on this build",
+      "whether locked verified-boot state allows any intended update path"
+    ],
+    "notes": [
+      "Green verified-boot state and locked vbmeta state are reported runtime properties, not independent cryptographic verification by this repository.",
+      "Equal A/B partition sizes do not prove equal contents or bootability.",
+      "The captured system_ext_a size was 639528960 bytes; re-check if terminal output was truncated or concatenated."
     ]
   }
 }

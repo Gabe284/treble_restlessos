@@ -225,7 +225,7 @@ jobs:
       - name: Upload kernel bundle as a separate artifact
         uses: actions/upload-artifact@v7
         with:
-          name: restlessos-kernel-${{ inputs.kernel_track }}-experimental
+          name: restlessos-kernel-${{ inputs.kernel_track }}-EXPERIMENTAL-NOT-FOR-FLASHING
           path: kernel-bundle/
           if-no-files-found: error
           compression-level: 6

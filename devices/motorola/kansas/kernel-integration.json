@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "integration": {
+    "repository": "Gabe284/GKI_KernelSU_SUSFS",
+    "default_ref": "feature/android-gki-upstream-linux",
+    "android_gki_targets": [
+      "android13-5.15",
+      "android17-6.18"
+    ],
+    "upstream_tracks": [
+      "stable",
+      "longterm",
+      "mainline"
+    ],
+    "artifact_delivery": "separate GitHub Actions artifact; never injected into system.img",
+    "default_target": "android13-5.15"
+  },
+  "device": {
+    "manufacturer": "Motorola",
+    "model": "XT2513-1",
+    "codename": "kansas",
+    "soc": "MediaTek MT6835",
+    "observed_kernel": "5.15.208-android13-Wild",
+    "vendor_build": "W1VKS36H.9-12-1/62f8a3"
+  },
+  "compatibility": {
+    "device_specific_kernel_source_confirmed": false,
+    "vendor_module_kmi_verified": false,
+    "avb_boot_acceptance_verified": false,
+    "boot_recovery_path_verified": false,
+    "flashable": false
+  },
+  "policy": {
+    "automatic_kernel_replacement": false,
+    "automatic_firmware_replacement": false,
+    "include_kernel_in_gsi_system_image": false,
+    "preserve_existing_device_patches": true,
+    "fail_closed_on_unknowns": true
+  }
+}

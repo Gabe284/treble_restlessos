@@ -58,6 +58,22 @@ A follow-up read-only inspection on 2026-10-29 found:
 These are leads, not proof of mount ownership. Do not disable modules, remove files, restart the framework, or change mounts as a diagnostic shortcut. Next inspect ZeroMount's configuration and its actual mount-pipeline implementation, then search module scripts/configuration for the exact target paths. Redact tokens or other secrets if any configuration contains them. Record which process/mount namespace each observation came from.
 
 
+## Optional external kernel build integration
+
+`.github/workflows/kernel-bundle.yml` can dispatch a selected build in `Gabe284/GKI_KernelSU_SUSFS`, wait for the remote run, download its artifacts, and wrap them with a manifest that pins the exact remote run commit and run URL. It supports Android GKI build targets and the upstream Linux stable/longterm/mainline workflow.
+
+This is deliberately separate from the RestlessOS GSI workflow:
+
+- The kernel is delivered as a separate, short-retention GitHub Actions artifact.
+- It is not copied into `system.img` or published as part of the standard RestlessOS release.
+- The workflow does not flash, repack, or alter boot/vendor partitions.
+- The manifest marks all results experimental and not flashable for Kansas.
+- The external build requires a `GH_PAT` repository secret that can dispatch workflows and read Actions artifacts in `Gabe284/GKI_KernelSU_SUSFS`.
+
+The default remote ref points at the kernel integration branch while its pull request is under review. Before routine use, switch to a reviewed commit or the merged default branch. Never rely on a mutable branch name alone for release provenance; the generated manifest records the commit SHA resolved from the actual remote workflow run.
+
+The currently observed device kernel is `5.15.208-android13-Wild`. The external kernel repository's generic `android13-5.15` GKI build is only a candidate for investigation, not proof of compatibility with the Motorola kernel/vendor modules. Upstream Linux builds are generic ARM64 compile artifacts and are not Android boot images. Do not enable automatic replacement or write-capable installation until device-specific kernel sources, module ABI/KMI, image packaging, AVB behavior, and recovery have all been independently validated.
+
 ## Required checks before any installer can write
 
 1. Confirm exact device model/variant and current Motorola build.

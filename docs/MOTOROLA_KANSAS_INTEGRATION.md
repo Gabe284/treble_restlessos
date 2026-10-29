@@ -44,6 +44,20 @@ KernelSU appears to be installed: the process list included a `libksud.so` invoc
 
 Before changing related files, inspect module metadata and scripts, init scripts, mount namespaces, overlay mechanisms, and actual backing files. Avoid printing secrets, private keys, tokens, or complete app data. Do not infer that changing the read-only EROFS image will change a separately mounted runtime file.
 
+
+## Follow-up: KernelSU module and mount-pipeline evidence
+
+A follow-up read-only inspection on 2026-10-29 found:
+
+- `/data/adb/modules/meta-zeromount/post-fs-data.sh` invokes the ZeroMount binary's `mount` pipeline, guarded by `/dev/zeromount_metamount_lock`. Its service script describes deferred post-boot work and mentions framework restart behavior for late-loaded modules.
+- `/data/adb/modules/susfs4ksu` has post-fs-data and service scripts that query SUSFS features and configure mount-hiding/redirect behavior. The captured excerpts do not directly map the three observed mount targets to SUSFS.
+- `zygisk_vector/service.sh` describes starting its daemon in a private mount namespace. This can complicate comparisons between mount tables from different processes.
+- `sentry_radio_hardening` was present, but the supplied excerpt did not establish whether it creates or modifies these mounts.
+- The supplied grep output did not show the ZeroMount pipeline implementation or an explicit rule for `libmtk-ril.so`, `usb_audio_policy_configuration.xml`, or `/system/usr/keylayout`.
+
+These are leads, not proof of mount ownership. Do not disable modules, remove files, restart the framework, or change mounts as a diagnostic shortcut. Next inspect ZeroMount's configuration and its actual mount-pipeline implementation, then search module scripts/configuration for the exact target paths. Redact tokens or other secrets if any configuration contains them. Record which process/mount namespace each observation came from.
+
+
 ## Required checks before any installer can write
 
 1. Confirm exact device model/variant and current Motorola build.

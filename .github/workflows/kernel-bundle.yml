@@ -1,0 +1,232 @@
+name: Build RestlessOS Kernel Bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_track:
+        description: "Kernel build track to request from GKI_KernelSU_SUSFS"
+        type: choice
+        options:
+          - android13-5.15
+          - android17-6.18
+          - upstream-stable
+          - upstream-longterm
+          - upstream-mainline
+        default: android13-5.15
+        required: true
+      kernel_ref:
+        description: "Branch name in Gabe284/GKI_KernelSU_SUSFS; the actual build commit is pinned in the bundle manifest"
+        type: string
+        default: feature/android-gki-upstream-linux
+        required: true
+      upstream_series:
+        description: "Upstream Linux series (used only for upstream tracks)"
+        type: choice
+        options:
+          - auto
+          - 7.2
+          - 6.18
+          - 6.12
+          - 6.6
+          - 6.1
+          - 5.15
+        default: auto
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: restlessos-kernel-bundle-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-kernel-bundle:
+    name: Request kernel build and collect provenance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout RestlessOS integration metadata
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+
+      - name: Validate profile and required token
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          python3 scripts/validate-device-profile.py devices/motorola/kansas/device.json
+          python3 scripts/validate-kernel-integration.py devices/motorola/kansas/kernel-integration.json
+          test -n "${GH_PAT:-}" || {
+            echo "::error::Configure GH_PAT with permission to dispatch workflows and read Actions artifacts in Gabe284/GKI_KernelSU_SUSFS."
+            exit 1
+          }
+
+      - name: Dispatch kernel build
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          KERNEL_REPO: Gabe284/GKI_KernelSU_SUSFS
+          KERNEL_REF: ${{ inputs.kernel_ref }}
+          KERNEL_TRACK: ${{ inputs.kernel_track }}
+          UPSTREAM_SERIES: ${{ inputs.upstream_series }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          ENCODED_REF="${KERNEL_REF//\//%2F}"
+          EXPECTED_SHA="$(gh api "repos/$KERNEL_REPO/commits/$ENCODED_REF" --jq .sha)"
+          case "$KERNEL_TRACK" in
+            android13-5.15|android17-6.18)
+              WORKFLOW="main.yml"
+              gh workflow run "$WORKFLOW" --repo "$KERNEL_REPO" --ref "$KERNEL_REF" \
+                -f release_type=Action \
+                -f kernel_build_version="$KERNEL_TRACK" \
+                -f feature_set=FULL \
+                -f use_repo=true \
+                -f use_latest_commits=false \
+                -f test_release_notes=false
+              ;;
+            upstream-stable|upstream-longterm|upstream-mainline)
+              WORKFLOW="upstream-linux.yml"
+              TRACK="${KERNEL_TRACK#upstream-}"
+              gh workflow run "$WORKFLOW" --repo "$KERNEL_REPO" --ref "$KERNEL_REF" \
+                -f track="$TRACK" \
+                -f series="$UPSTREAM_SERIES" \
+                -f defconfig=defconfig
+              ;;
+            *)
+              echo "Unsupported kernel track: $KERNEL_TRACK" >&2
+              exit 2
+              ;;
+          esac
+          echo "workflow=$WORKFLOW" >> "$GITHUB_OUTPUT"
+          echo "started_at=$STARTED_AT" >> "$GITHUB_OUTPUT"
+          echo "expected_sha=$EXPECTED_SHA" >> "$GITHUB_OUTPUT"
+          echo "kernel_repo=$KERNEL_REPO" >> "$GITHUB_OUTPUT"
+          echo "kernel_ref=$KERNEL_REF" >> "$GITHUB_OUTPUT"
+          echo "kernel_track=$KERNEL_TRACK" >> "$GITHUB_OUTPUT"
+          echo "Kernel build requested: $KERNEL_REPO / $WORKFLOW / $KERNEL_REF / $KERNEL_TRACK"
+
+      - name: Wait for dispatched kernel workflow
+        id: remote
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          KERNEL_REPO: ${{ steps.dispatch.outputs.kernel_repo }}
+          KERNEL_REF: ${{ steps.dispatch.outputs.kernel_ref }}
+          WORKFLOW: ${{ steps.dispatch.outputs.workflow }}
+          STARTED_AT: ${{ steps.dispatch.outputs.started_at }}
+          EXPECTED_SHA: ${{ steps.dispatch.outputs.expected_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_ID=""
+          for attempt in $(seq 1 60); do
+            RUN_ID="$(gh run list --repo "$KERNEL_REPO" --workflow "$WORKFLOW" \
+              --branch "$KERNEL_REF" --event workflow_dispatch --limit 20 \
+              --json databaseId,createdAt,status,headBranch,headSha \
+              --jq "[.[] | select(.createdAt >= \"$STARTED_AT\") | select(.headBranch == \"$KERNEL_REF\") | select(.headSha == \"$EXPECTED_SHA\")] | sort_by(.createdAt) | last | .databaseId // empty")"
+            if [[ -n "$RUN_ID" ]]; then break; fi
+            sleep 5
+          done
+          if [[ -z "$RUN_ID" ]]; then
+            echo "::error::Could not find the dispatched kernel workflow run."
+            exit 1
+          fi
+          RUN_SHA="$(gh run view "$RUN_ID" --repo "$KERNEL_REPO" --json headSha --jq .headSha)"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "run_sha=$RUN_SHA" >> "$GITHUB_OUTPUT"
+          echo "run_url=https://github.com/$KERNEL_REPO/actions/runs/$RUN_ID" >> "$GITHUB_OUTPUT"
+          gh run watch "$RUN_ID" --repo "$KERNEL_REPO" --exit-status
+
+      - name: Download remote build artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          KERNEL_REPO: ${{ steps.dispatch.outputs.kernel_repo }}
+          RUN_ID: ${{ steps.remote.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p kernel-bundle/remote-artifacts
+          gh run download "$RUN_ID" --repo "$KERNEL_REPO" --dir kernel-bundle/remote-artifacts
+          test -n "$(find kernel-bundle/remote-artifacts -type f -print -quit)" || {
+            echo "::error::Remote workflow completed but provided no downloadable artifacts."
+            exit 1
+          }
+
+      - name: Write bundle manifest and checksums
+        env:
+          KERNEL_REPO: ${{ steps.dispatch.outputs.kernel_repo }}
+          KERNEL_REF: ${{ steps.dispatch.outputs.kernel_ref }}
+          KERNEL_TRACK: ${{ steps.dispatch.outputs.kernel_track }}
+          KERNEL_WORKFLOW: ${{ steps.dispatch.outputs.workflow }}
+          KERNEL_RUN_ID: ${{ steps.remote.outputs.run_id }}
+          KERNEL_RUN_SHA: ${{ steps.remote.outputs.run_sha }}
+          KERNEL_RUN_URL: ${{ steps.remote.outputs.run_url }}
+          KERNEL_STARTED_AT: ${{ steps.dispatch.outputs.started_at }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="$KERNEL_RUN_SHA"
+          export SOURCE_SHA
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          manifest = {
+              "schema_version": 1,
+              "bundle_type": "experimental-kernel-build-artifacts",
+              "device_profile": "devices/motorola/kansas/device.json",
+              "device": {
+                  "manufacturer": "Motorola",
+                  "model": "XT2513-1",
+                  "codename": "kansas",
+                  "soc": "MediaTek MT6835"
+              },
+              "kernel_source": {
+                  "repository": os.environ["KERNEL_REPO"],
+                  "requested_ref": os.environ["KERNEL_REF"],
+                  "resolved_commit": os.environ["SOURCE_SHA"],
+                  "track": os.environ["KERNEL_TRACK"],
+                  "workflow_file": os.environ["KERNEL_WORKFLOW"],
+                  "workflow_run_id": os.environ["KERNEL_RUN_ID"],
+                  "workflow_run_url": os.environ["KERNEL_RUN_URL"],
+                  "dispatch_started_at_utc": os.environ["KERNEL_STARTED_AT"]
+              },
+              "compatibility": {
+                  "device_kernel_observed": "5.15.208-android13-Wild",
+                  "validated_for_device": False,
+                  "flashable": False,
+                  "reason": "Artifact collection does not establish boot compatibility, vendor-module KMI compatibility, AVB acceptance, or a verified recovery path."
+              },
+              "policy": {
+                  "included_in_restlessos_system_image": False,
+                  "automatic_firmware_replacement": False,
+                  "partition_writes_performed": False,
+                  "existing_device_patches_preserved": True
+              }
+          }
+          Path("kernel-bundle/bundle-manifest.json").write_text(
+              json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+          find kernel-bundle -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > kernel-bundle/SHA256SUMS
+          {
+            echo "## RestlessOS kernel bundle"
+            echo
+            echo "- Track: `$KERNEL_TRACK`"
+            echo "- Source: `$KERNEL_REPO@$SOURCE_SHA`"
+            echo "- Remote build: $KERNEL_RUN_URL"
+            echo "- **Status: experimental; not validated for Kansas and not flashable.**"
+            echo "- The normal RestlessOS GSI build/release is unchanged."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload kernel bundle as a separate artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: restlessos-kernel-${{ inputs.kernel_track }}-EXPERIMENTAL-NOT-FOR-FLASHING
+          path: kernel-bundle/
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 14

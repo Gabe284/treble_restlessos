@@ -39,6 +39,16 @@ These can be re-enabled in **TrebleApp → Hardening** or **Settings → Exploit
 - **secure (exec-based) app spawning** — breaks root solutions (Magisk / KernelSU)
 
 
+## Experimental kernel build integration
+
+The Kansas device integration includes an **optional, separate** kernel-artifact workflow. Open **Actions → Build RestlessOS Kernel Bundle → Run workflow** to request a build from [GKI_KernelSU_SUSFS](https://github.com/Gabe284/GKI_KernelSU_SUSFS).
+
+The workflow supports Android GKI targets and the repository's upstream Linux stable, longterm, and mainline build track. It requests the build from the kernel repository, waits for that exact run, downloads its artifacts, and emits a provenance manifest and SHA-256 checksums as a separate Actions artifact.
+
+Before running it, configure a `GH_PAT` repository secret with permission to dispatch workflows and read Actions artifacts in `Gabe284/GKI_KernelSU_SUSFS`. The default kernel ref is currently `feature/android-gki-upstream-linux`, where the new targets are proposed; update it to a reviewed branch or commit as the kernel integration evolves.
+
+**This is artifact integration, not a device-ready firmware updater.** The kernel bundle is not inserted into the RestlessOS `system.img`, is not attached to the normal RestlessOS release, and does not write any device partition. The Moto G (2025) currently reports `5.15.208-android13-Wild`; no custom kernel target is considered flashable until device-specific source/configuration, vendor-module KMI, AVB acceptance, and a verified recovery path have been established. Keep the stock kernel and firmware as the baseline and preserve the existing Kansas compatibility patches.
+
 ## Delta Updates with zsync2
 
 Each release includes a `.zsync` file alongside the uncompressed `.img`,

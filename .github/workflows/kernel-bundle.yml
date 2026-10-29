@@ -15,7 +15,7 @@ on:
         default: android13-5.15
         required: true
       kernel_ref:
-        description: "Branch, tag, or commit in Gabe284/GKI_KernelSU_SUSFS"
+        description: "Branch name in Gabe284/GKI_KernelSU_SUSFS; the actual build commit is pinned in the bundle manifest"
         type: string
         default: feature/android-gki-upstream-linux
         required: true
@@ -77,6 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          EXPECTED_SHA="$(gh api "repos/$KERNEL_REPO/commits/$KERNEL_REF" --jq .sha)"
           case "$KERNEL_TRACK" in
             android13-5.15|android17-6.18)
               WORKFLOW="main.yml"
@@ -103,6 +104,7 @@ jobs:
           esac
           echo "workflow=$WORKFLOW" >> "$GITHUB_OUTPUT"
           echo "started_at=$STARTED_AT" >> "$GITHUB_OUTPUT"
+          echo "expected_sha=$EXPECTED_SHA" >> "$GITHUB_OUTPUT"
           echo "kernel_repo=$KERNEL_REPO" >> "$GITHUB_OUTPUT"
           echo "kernel_ref=$KERNEL_REF" >> "$GITHUB_OUTPUT"
           echo "kernel_track=$KERNEL_TRACK" >> "$GITHUB_OUTPUT"
@@ -116,6 +118,7 @@ jobs:
           KERNEL_REF: ${{ steps.dispatch.outputs.kernel_ref }}
           WORKFLOW: ${{ steps.dispatch.outputs.workflow }}
           STARTED_AT: ${{ steps.dispatch.outputs.started_at }}
+          EXPECTED_SHA: ${{ steps.dispatch.outputs.expected_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -123,8 +126,8 @@ jobs:
           for attempt in $(seq 1 60); do
             RUN_ID="$(gh run list --repo "$KERNEL_REPO" --workflow "$WORKFLOW" \
               --branch "$KERNEL_REF" --event workflow_dispatch --limit 20 \
-              --json databaseId,createdAt,status,headBranch \
-              --jq "[.[] | select(.createdAt >= \"$STARTED_AT\") | select(.headBranch == \"$KERNEL_REF\")] | sort_by(.createdAt) | last | .databaseId // empty")"
+              --json databaseId,createdAt,status,headBranch,headSha \
+              --jq "[.[] | select(.createdAt >= \"$STARTED_AT\") | select(.headBranch == \"$KERNEL_REF\") | select(.headSha == \"$EXPECTED_SHA\")] | sort_by(.createdAt) | last | .databaseId // empty")"
             if [[ -n "$RUN_ID" ]]; then break; fi
             sleep 5
           done
